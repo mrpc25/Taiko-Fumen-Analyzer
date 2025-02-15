@@ -1,15 +1,7 @@
 import math
-#import sys
 import os
-#import tkinter as tk
 import matplotlib.pyplot as plt
-#from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import configparser
-
-
-# from pydub import AudioSegment
-# AudioSegment.converter = 'C:/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe'
-# AudioSegment.converter = 'ffmpeg.exe'
 
 def WriteConfig(configpath,SECTION,KEY,value):  #https://stackoverflow.com/questions/8884188/how-to-read-and-write-ini-file-with-python3
     config = configparser.ConfigParser()
@@ -107,124 +99,110 @@ class TaikoFumen():
         #先尋找所有難度以及星級
         Song_Difficulty = self.FindPhraseInRow("COURSE:")
         Song_level = self.FindPhraseInRow("LEVEL:")
-        Song_IsDual = []
-        for location in Song_Difficulty:
-            if(location==Song_Difficulty[0]):
-                Song_IsDual.append(self.OffsetThingsValue("STYLE:",[0,self.FindPhraseInRow("#START",[location+1,len(EveryRow)])[0]]))
-            else:
-                Song_IsDual.append(self.OffsetThingsValue("STYLE:",[self.FindPhraseInRowRev("#END",[0,location])[0],self.FindPhraseInRow("#START",[location+1,len(EveryRow)])[0]]))
-
-        #判斷這份譜面檔案當中是否含有任何一個是雙人譜面的難度
-        IsAnyDual = False
-        for IsDualState in Song_IsDual:
-            IsDualState = IsDualState.replace(" ", "")
-            if(IsDualState=="2" or IsDualState=="Double" or IsDualState=="double"):
-                IsAnyDual = True
-                break
 
         Song_Begin = self.FindPhraseInRow("#START")
         Song_Endin = self.FindPhraseInRow("#END")
-        
-        Song_Pre = []
-        for EachEnd in Song_Endin:
-            if(EachEnd!=Song_Endin[0]):
-                Song_Pre.append(Temp+1)
-            else:
-                Song_Pre.append(0)
-            Temp = EachEnd
 
-        if(IsAnyDual==False):
-            Song_Begin_P1 = []
-            Song_Begin_P2 = []
-
-        else:
-            for j in range(len(Song_Pre)):
-                if(len(self.OffsetThingsValue("COURSE:", [Song_Pre[j], Song_Begin[j]]).replace(" ", ""))==0):
-                    Song_Difficulty.insert(j,Temp_Difficulty)
-                    Song_level.insert(j,Temp_level)
-                else:
-                    Temp_Difficulty = Song_Difficulty[j]
-                    Temp_level = Song_level[j]
-
-            if(len(Song_Begin)!=len(Song_Endin)):
-                raise Exception("Please check if the #START(P1/P2) and #END commands used correctly, and then restart.")
+        assert len(Song_Begin)==len(Song_Endin), \
+          "The amount of \"#START(P1/2)\' and \"#END\" command is not equal, you might need to check if some necessary command was lost."
             
         self.Song_Begin = Song_Begin
         self.Song_Endin = Song_Endin
 
         self.FumanClassfication = []
+        self.BasicInfoOverViewDict = []           #20240622 更新
+        self.BasicInfoOverViewDictWithIndex = []  #20240622 更新
 
-        if(IsAnyDual==False):
-            # print(f"There are {len(Song_Begin)} Fumen(s) has been dectected and displayed below:")
-            # print("\n\t\tDifficulty\tLevel\n")
+        #20240909 更新: 若同檔案超過一個譜面，則除了位於最上面的譜面以外，並不一定需要填進所有資訊，可以以預設資訊或先前資訊替代。
+        _last_record_difficulty = "N/A"
+        _last_record_side = "-"
+        _last_record_level = "?"
+        _last_record_style = ""
 
-            for i in range(len(Song_Begin)):
-                if(i!=0):
-                    difficulty = self.OffsetThingsValue("COURSE:", [Song_Endin[i-1]+1, Song_Begin[i]])
-                    level = self.OffsetThingsValue("LEVEL:", [Song_Endin[i-1]+1, Song_Begin[i]])
-                else:
-                    difficulty = self.OffsetThingsValue("COURSE:", [0, Song_Begin[0]])
-                    level = self.OffsetThingsValue("LEVEL:", [0, Song_Begin[0]])
-                difficulty = difficulty.replace(" ", "")
-                if(difficulty=="4" or difficulty.lower()=="edit"):
-                    difficulty = "Edit"
-                elif(difficulty=="3" or difficulty.lower()=="oni"):
-                    difficulty = "Oni"
-                elif(difficulty=="2" or difficulty.lower()=="hard"):
-                    difficulty = "Hard"
-                elif(difficulty=="1" or difficulty.lower()=="normal"):
-                    difficulty = "Normal"
-                elif(difficulty=="0" or difficulty.lower()=="easy"):
-                    difficulty = "Easy"
-                elif(difficulty==""):
-                    difficulty = "N/A"
-                # print(f"\t{i}\t{difficulty}\t\t{level}")
-                self.FumanClassfication.append([i, difficulty, "-", level])
+        #20240914 更新: 改動偵測譜面的方式，不再先區分是否含有雙人譜面。
+        for i in range(len(Song_Begin)):
+            end, start = (Song_Endin[i-1]+1, Song_Begin[i]) if (i!=0) else (0, Song_Begin[0])
 
-        else:
+            difficulty = self.OffsetThingsValue("COURSE:", [end, start])
+            level = self.OffsetThingsValue("LEVEL:", [end, start])
+            style = self.OffsetThingsValue("STYLE:", [end, start])
+            directness = self.OffsetThingsValue("SIDE:", [end, start])
+            StringOfSTART = self.OffsetThingsValue("#START", [end, start])
+            hbscroll = self.FindPhraseInRow("#HBSCROLL", [end, start])
+            bmscroll = self.FindPhraseInRow("#BMSCROLL", [end, start])
 
-            # print(f"There are {len(Song_Begin)} Fumen(s) has been dectected and displayed below:")
-            # print("\n\t\tDifficulty\tDual\tLevel\n")
+            difficulty = difficulty.replace(" ", "")
+            level = level.replace(" ", "")
+            style = style.replace(" ", "")
+            directness = directness.replace(" ", "")
+            dualstatestr = ""
+            for x in StringOfSTART: #把偵測到的文字裡，只留下P/1/2三種（因為只有#START/#START P1/#START P2三種可能）
+                if(x=="P" or x=="1" or x=="2"): dualstatestr = dualstatestr + x
 
-            for i in range(len(Song_Begin)):
-                difficulty = self.OffsetThingsValue("COURSE:", [Song_Difficulty[i], Song_Difficulty[i]+1])
-                difficulty = difficulty.replace(" ", "")
-                if(difficulty=="4" or difficulty.lower()=="edit"):
-                    difficulty = "Edit"
-                elif(difficulty=="3" or difficulty.lower()=="oni"):
-                    difficulty = "Oni"
-                elif(difficulty=="2" or difficulty.lower()=="hard"):
-                    difficulty = "Hard"
-                elif(difficulty=="1" or difficulty.lower()=="normal"):
-                    difficulty = "Normal"
-                elif(difficulty=="0" or difficulty.lower()=="easy"):
-                    difficulty = "Easy"
-                elif(difficulty==""):
-                    difficulty = "N/A"
+            #20250208 更新: 檢測HBS/BMS
+            if(len(hbscroll)+len(bmscroll)>1): raise Exception(f"Multiple #HBSCROLL or #BMSCROLL command.")
+            HBSCROLL = len(hbscroll)==1
+            BMSCROLL = len(bmscroll)==1
 
+            #20240909 更新:
+            still_in_same_course = False
+            match difficulty.lower():
+                case "4"|"edit"  : difficulty = "Edit"
+                case "3"|"oni"   : difficulty = "Oni"
+                case "2"|"hard"  : difficulty = "Hard"
+                case "1"|"normal": difficulty = "Normal"
+                case "0"|"easy"  : difficulty = "Easy"
+                case "": 
+                  difficulty = _last_record_difficulty
+                  still_in_same_course = True
+                case _: raise Exception(f"difficulty not existed. (Input: \"{difficulty}\")")
+            _last_record_difficulty = difficulty
 
-                level = self.OffsetThingsValue("LEVEL:", [Song_level[i], Song_level[i]+1])
+            if level=="" : level = _last_record_level
+            _last_record_level = level
+                
+            #20240622 更新:
+            match directness.lower():
+                case "1"|"normal": side = "EXT"
+                case "2"|"ex": side = "INT"
+                case "3": side = "-"
+                case "": side = _last_record_side
+                case _: raise Exception(f"Not a available side symbol, expect 1/2/3/None, (Input: \"{directness}\")")
+            _last_record_side = side
 
-                StringOfSTART = self.OffsetThingsValue("#START",[Song_Begin[i],Song_Begin[i]+1])
-                dualstatestr = ""
-                for x in StringOfSTART:
-                    if(x=="P" or x=="1" or x=="2"):
-                        dualstatestr = dualstatestr + x
+            #20240914 更新:
+            match dualstatestr:
+               case "P1": dual = "P1"
+               case "P2": dual = "P2"
+               case "": dual = "-"
+               case _: raise Exception(f"Invalid input for \"dualstatestr\". (input: {dualstatestr})")
+            if style=="" and still_in_same_course: style = _last_record_style
+            _last_record_style = style
 
-                if(dualstatestr=="P1"):
-                    dual = "P1"
-                elif(dualstatestr=="P2"):
-                    dual = "P2"
-                else:
-                    dual = "-"
+            style_declaration = style.lower()=="double" or style=="2"
+            extracted_dual_sign = dual=="P1" or dual=="P2"
+            if (not style_declaration) and extracted_dual_sign : 
+               raise Exception("Find that \"#START P1/2\" is written in file, but \"STYLE:\" section doesn't declare it's as a fumen for double player.")
+            if style_declaration and (not extracted_dual_sign) :
+               raise Exception("Find that double player mode is mentioned in \"STYLE:\" section, but \"#START P1/2\" is not written.")
+            
+            self.FumanClassfication.append([i, difficulty, dual, side, level])
 
-                # print(f"\t{i}\t{difficulty}\t\t{dual}\t{level}")
-                self.FumanClassfication.append([i, difficulty, dual, level])
+            #20240622 更新:
+            fumen_dict = {'difficulty':difficulty, 'dual':dual, 'side':side, 'level':level, 'operation':(HBSCROLL, BMSCROLL)}
+            self.BasicInfoOverViewDictWithIndex.append([i, fumen_dict])
+            self.BasicInfoOverViewDict.append(fumen_dict)
+        
+        #20240914 更新: "IsAnyDual"不再作為必要的判斷過程後，轉而使用分類後的譜面資訊來判斷
+        IsAnyDual = False
+        for fumrn in self.BasicInfoOverViewDict:
+           if(fumrn['dual']!="-"): 
+              IsAnyDual = True
+              break
 
         self.Song_Difficulty = Song_Difficulty
         self.Song_level = Song_level
         self.IsAnyDual = IsAnyDual
-
 
     #定義在指定的行內（範圍），是否有出現過特定文字，並輸出所有含有該特定文字的所在行數，形式是List
     #out of index problem is caused by List Default Arguments, solve by 
@@ -234,8 +212,13 @@ class TaikoFumen():
             Coverage = [0, len(self.EveryRow)]
         Order = []
         for i in range(Coverage[0],Coverage[1]):
-            if(self.EveryRow[i].find(Phrase)!=-1):
-                Order.append(i)
+            #20240909更新
+            reference = self.EveryRow[i].find(Phrase)
+            annotation = self.EveryRow[i].find("//")
+            reference_exist = reference!=-1                           #確認目標的字眼到底在不在該行內
+            annotation_exist = annotation!=-1                         #確認該行有沒有註解符號
+            if (not annotation_exist) and reference_exist: Order.append(i)
+            if annotation_exist and reference_exist and (reference < annotation): Order.append(i)
         return Order
     
     def FindPhraseInRowRev(self, Phrase, Coverage=None):
@@ -270,6 +253,17 @@ class TaikoFumen():
             for i in range(Observed.find(Phrase)+len(Phrase),EndLocation):
                 output = output + Observed[i]
         return output
+    
+    #尋找特定字詞所在地，在那個字詞之後出現的字詞，並去除在註解符號"//"後的部分（"("不受影響）。
+    def OffsetThingsValue_PareIgnored(self,Phrase,Range):
+      PhraseInRegion = self.FindPhraseInRow(Phrase,Range)
+      output = ""
+      if(len(PhraseInRegion)==0): return output
+      Observed = self.EveryRow[PhraseInRegion[0]]
+      Anno = Observed.find("//")
+      EndLocation = len(Observed) if (Anno == -1) else Anno
+      for i in range(Observed.find(Phrase)+len(Phrase),EndLocation): output = output + Observed[i]
+      return output
     
     def abc(self):
         print("blablablaJustTesting")
@@ -408,19 +402,11 @@ class TaikoFumenInner(TaikoFumen):
         self.HasBrachProcessYet = HasBrachProcessYet
         self.BranchStateSet = BranchStateSet
 
-        
-
         # @title
         if(len(self.FindPhraseInRow("#BRANCHSTART",[ChosenBegin, ChosenEndin]))==0):
           self.IsBranchExist = False
-          UserChosenBranchDirection = None
-          # print(">>> No branches were found in this fumen.")
-
         else:
           self.IsBranchExist = True
-          # print("There are branches dectected, please choose one of them depending on prompt below:\n")
-
-          # print("\t\t0：「普通」 / 1：「玄人」 / 2：「達人」")
 
     def Find_Scroll_Of_EachNotesInLoaction(self):
       LastLocation = self.ChosenBegin
@@ -748,7 +734,7 @@ class TaikoFumenBranched(TaikoFumenInner):
         self.TempContent = TempContent
 
         #譜面基本資訊
-        TITLE = self.OffsetThingsValue("TITLE:", [0, self.Song_Begin[0]])
+        TITLE = self.OffsetThingsValue_PareIgnored("TITLE:", [0, self.Song_Begin[0]])
         if(not self.IsAnyDual):
             COURSE = self.OffsetThingsValue("COURSE:", [self.ChosenReady, self.ChosenBegin])
             LevelStar = self.OffsetThingsValue("LEVEL:", [self.ChosenReady, self.ChosenBegin])
@@ -756,38 +742,34 @@ class TaikoFumenBranched(TaikoFumenInner):
             COURSE = self.OffsetThingsValue("COURSE:", [self.Song_Difficulty[int(UserChosenFumen)], self.Song_Difficulty[int(UserChosenFumen)]+1])
             LevelStar = self.OffsetThingsValue("LEVEL:", [self.Song_level[int(UserChosenFumen)], self.Song_level[int(UserChosenFumen)]+1])
         COURSE = COURSE.replace(" ", "")
-        if(COURSE=="4" or COURSE=="Edit"):
-            COURSE = "Edit"
-        elif(COURSE=="3" or COURSE=="Oni"):
-            COURSE = "Oni"
-        elif(COURSE=="2" or COURSE=="Hard"):
-            COURSE = "Hard"
-        elif(COURSE=="1" or COURSE=="Normal"):
-            COURSE = "Normal"
-        elif(COURSE=="0" or COURSE=="Easy"):
-            COURSE = "Easy"
-        elif(COURSE==""):
-            COURSE = "N/A"
 
-
+        match COURSE.lower():
+          case "4"|"edit"   : COURSE = "Edit"
+          case "3"|"oni"    : COURSE = "Oni"
+          case "2"|"hard"   : COURSE = "Hard"
+          case "1"|"normal" : COURSE = "Normal"
+          case "0"|"easy"   : COURSE = "Easy"
+          case "" : COURSE = "N/A"
+          case _  : raise Exception("Course Is Invalid.")
+           
         DUAL = None
         StringOfStartType = self.OffsetThingsValue("#START",[self.Song_Begin[UserChosenFumen],self.Song_Begin[UserChosenFumen]+1])
         dualstatestr = ""
         for Type in StringOfStartType:
-            if(Type=="P" or Type=="1" or Type=="2"):
-                dualstatestr = dualstatestr + Type
-        if(dualstatestr=="P1"):
-            DUAL = "Player 1"
-        elif(dualstatestr=="P2"):
-            DUAL = "Player 2"
+            if(Type=="P" or Type=="1" or Type=="2"): dualstatestr = dualstatestr + Type
+
+        #20250129 更新
+        match dualstatestr:
+          case "P1" : DUAL = "Player 1"
+          case "P2" : DUAL = "Player 2"
+          case ""   : pass
+          case _    : raise Exception(f"Not a vaild player command. ({dualstatestr})")
 
         BRANCH = None
-        if(UserChosenBranchDirection==0):
-            BRANCH = "普通譜面"
-        elif(UserChosenBranchDirection==1):
-            BRANCH = "玄人譜面"
-        elif(UserChosenBranchDirection==2):
-            BRANCH = "達人譜面"
+        match UserChosenBranchDirection:
+          case 0: BRANCH = "普通譜面"
+          case 1: BRANCH = "玄人譜面"
+          case 2: BRANCH = "達人譜面"
 
         self.TITLE = TITLE
         self.COURSE = COURSE
@@ -967,16 +949,17 @@ class TaikoFumenBranched(TaikoFumenInner):
     
     #找出所有相鄰鼓點間，持續時間最短和最長的值
     def FindExtremePeriod(self):
-         Noteslist = self.FindEveryActualNotesLocation()
-         tempL = self.Duration(Noteslist[0], Noteslist[1])[0]
-         tempH = self.Duration(Noteslist[0], Noteslist[1])[0]
-         for i in range(len(Noteslist)-2):
-              Last = self.Duration(Noteslist[i+1], Noteslist[i+2])[0]
-              if(tempL > Last):
-                   tempL = Last
-              if(tempH < Last):
-                   tempH = Last
-         return tempL, tempH
+        Noteslist = self.FindEveryActualNotesLocation()
+        assert(len(Noteslist)>0), "This fumen doesn't have any notes."
+        if(len(Noteslist)==1): return 0, 0
+        initial = self.Duration(Noteslist[0], Noteslist[1])[0]
+        if(len(Noteslist)==2): return initial, initial
+        tempL, tempH = initial, initial
+        for i in range(len(Noteslist)-2):
+            Latest = self.Duration(Noteslist[i+1], Noteslist[i+2])[0]
+            if(tempL > Latest): tempL = Latest
+            if(tempH < Latest): tempH = Latest
+        return tempL, tempH
     
     #計算密度
     #輸入為開始位置和結束位置，預設為第一個和最後音符位置
@@ -1052,8 +1035,6 @@ class TaikoFumenBranched(TaikoFumenInner):
       AllRelativeLocation = self.FindEveryActualNotesLocation()
       Noteslist = self.FindEveryActualNotesLocation()
       ALLnotes = len(AllRelativeLocation)
-
-
       Temp = self.DensityInSpreadRange(AllRelativeLocation[0],T)
 
       ProcessUnitTime = []
@@ -1324,8 +1305,6 @@ class TaikoFumenBranched(TaikoFumenInner):
          MulipliedThings = 1
          PortionPassedBy = 0
 
-
-
          if(WantedType.lower()=="both"):
               ChoosenFunction = SeenVelSet
          elif(WantedType.lower()=="bpm"):
@@ -1525,7 +1504,6 @@ class TaikoFumenBranched(TaikoFumenInner):
         if((not IsEven) and each == NotesLocation[0]):
           continue
         FullSeriesNotes = FullSeriesNotes + self.EveryBar[each[0]][each[1]]
-      #print(len(FullSeriesNotes))
 
       Original = FullSeriesNotes
       Transformed = ""
@@ -1968,33 +1946,17 @@ class TaikoFumenRealiztion(TaikoFumenBranched):
     def PlotAllNotes(self, SaveRequired=False):
       PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon = None, None, None, None, None, None, 0
       if(SaveRequired):
-        # if(os.path.isdir("_figure")):
-        #   raise Exception("Please rename or delete the \"_figure\" folder lest the following executing process goes wrong.")
-        # if(os.path.isfile("figure.zip")):
-        #   raise Exception("Please rename or delete the \"figure.zip\" file lest the following executing process goes wrong.")
         os.mkdir("_figure")
         for x in range(len(self.EveryBar)):
           PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon = \
             self.PlotNotes_2(x, self.BeatsToMeasureSet[x][0], PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon)
-
-          #plt.savefig("_figure/" + str(x+1))
           plt.axis('off')
           plt.savefig("_figure/" + str(x+1) + '.png', bbox_inches='tight', pad_inches=0)  #Sovled By Copilot
           plt.clf()   
           plt.close('all')
           
-
         print("\n")
-        # infomation = [self.TITLE, self.COURSE, self.LevelStar, self.DUAL, self.BRANCH]
-        # FileName = ""
-        # for info in infomation:
-        #   if(info==None):
-        #     continue
-        #   FileName = FileName + str(info) + "_"
-        # FileName = FileName[:-1]
 
-        # #os.rename("figure.zip", FileName + ".zip")
-        # os.rename("_figure", FileName)
       else:
         for x in range(len(self.EveryBar)):
           PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon = self.PlotNotes_2(x, self.BeatsToMeasureSet[x][0], PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon)

@@ -1,1 +1,0 @@
-START dist\main\main.exe
