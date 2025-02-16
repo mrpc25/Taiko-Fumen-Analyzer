@@ -35,11 +35,23 @@ def ReadConfig(configpath,SECTION,KEY):
     config.read(configpath, encoding="utf-8")
     return config[SECTION][KEY]
 
-def WipeFileExtension(FileName):
+# def WipeFileExtension(FileName):
+#     NewFileName = ""
+#     for char in FileName:
+#         if(char=="."): return NewFileName
+#         NewFileName = NewFileName + char
+#     return NewFileName
+
+def WipeFileExtension(FileName:str):
     NewFileName = ""
-    for char in FileName:
-        if(char=="."): return NewFileName
-        NewFileName = NewFileName + char
+    last_dot_passed = False
+    for char in FileName[::-1]:
+        if(last_dot_passed):
+            NewFileName = NewFileName + char
+        if(char=="."): 
+            last_dot_passed = True
+            NewFileName = ""
+    return NewFileName[::-1] if last_dot_passed else FileName
 
 def Language_Reopen(language):
     WriteConfig("config.ini", "PARAMETERS", "language", language)
@@ -145,10 +157,11 @@ TEXT_ZOOMEDFIG_ZOOMIN = ReadConfig(Languege_Path, "FIGURE_ZOOM", "TEXT_ZOOMEDFIG
 TEXT_ROOT_NOBRANCHFOUNDED = ReadConfig(Languege_Path, "ROOT", "TEXT_ROOT_NOBRANCHFOUNDED") 
 TEXT_ROOT_CODEC = ReadConfig(Languege_Path, "ROOT", "TEXT_ROOT_CODEC") 
 TEXT_ROOT_ROLLSINFO_UPPER = ReadConfig(Languege_Path, "ROOT", "TEXT_ROOT_ROLLSINFO_UPPER") 
+TEXT_ROOT_MESSAGE_OPERATION_SUPPORT = ReadConfig(Languege_Path, "ROOT", "TEXT_ROOT_MESSAGE_OPERATION_SUPPORT") 
+
 TEXT_ROOT_ROLLSINFO_LOWER = ReadConfig(Languege_Path, "ROOT", "TEXT_ROOT_ROLLSINFO_LOWER") 
 TEXT_SETTING_LANGUAGE = ReadConfig(Languege_Path, "SETTING", "TEXT_SETTING_LANGUAGE") 
 TEXT_SETTING_MESSAGE_RESTARTBYLARG = ReadConfig(Languege_Path, "SETTING", "TEXT_SETTING_MESSAGE_RESTARTBYLARG") 
-
 
 def show(x):
     x.set(x.get())
@@ -340,10 +353,7 @@ LoadedYet = False
 def Reduced_file_path(Og_path):
     New = ""
     for char in Og_path:
-        if(char!="/"):
-            New = New + char
-        else:
-            New = ""
+        New = New + char if char!="/" else ""
     return New
 
 def Ask_forfile():
@@ -382,6 +392,7 @@ def NewFumen_Initualize():
     COURSE_value.set("")
     DUAL_value.set("")
     LEVEL_value.set("")
+    SIDE_value.set("")
 
 
     #當前譜面資訊
@@ -442,13 +453,12 @@ FumenOptionList = ttk.Combobox(root, width=2, height=5, values=[], justify='cent
 SelectedYet = False
 def Ask_WhichFumen():
     global song_basic
-    global Fumen_Option_raw
+    global Fumen_Option_dict
     global FumenOptionList
 
     song_basic = TaikoFumen(file_path, Codec)
-
-    Fumen_Option_raw = song_basic.FumanClassfication
-    Fumen_Option = list(range(len(Fumen_Option_raw)))
+    Fumen_Option_dict = song_basic.BasicInfoOverViewDict
+    Fumen_Option = list(range(len(Fumen_Option_dict)))
 
     FumenOptionList = ttk.Combobox(root, width=2, height=5, values=Fumen_Option, justify='center', state="readonly")
     FumenOptionList.set("-")
@@ -459,15 +469,20 @@ def Update_FumenOption(event):  #隨著選項，更新譜面顯示的相關資�
     global BranchOptionList
     global SelectedYet
     global LoadedYet
+    global Fumen_Option_dict
+    global FumenOption
     
     FumenOption = FumenOptionList.get()
-    if(FumenOption=="-" or FumenOption==None):
-        SelectedYet = False
-    else:
-        SelectedYet = True
-    COURSE_value.set(Fumen_Option_raw[int(FumenOption)][1])
-    DUAL_value.set(Fumen_Option_raw[int(FumenOption)][2])
-    LEVEL_value.set(Fumen_Option_raw[int(FumenOption)][3])
+    SelectedYet = FumenOption!="-" and FumenOption!=None
+    # if(FumenOption=="-" or FumenOption==None):
+    #     SelectedYet = False
+    # else:
+    #     SelectedYet = True
+
+    COURSE_value.set(Fumen_Option_dict[int(FumenOption)]['difficulty'])
+    DUAL_value.set(Fumen_Option_dict[int(FumenOption)]['dual'])
+    LEVEL_value.set(Fumen_Option_dict[int(FumenOption)]['level'])
+    SIDE_value.set(Fumen_Option_dict[int(FumenOption)]['side'])
 
 def Update_BranchOption(event):
     level_Compute_button.configure(state='disabled')
@@ -485,21 +500,13 @@ def Update_RollsOptions(event):
     global Roll_KickState
 
     RollsOption = RollsOptionList.get()
-    
-    if(RollsOption=="-" or RollsOption==None):
-        SelectedRollYet = False
-    else:
-        SelectedRollYet = True
+    SelectedRollYet = RollsOption!="-" and RollsOption!=None
 
     match Rolls_info[int(RollsOption)][0]:
-        case 5:
-            RollType_value.set(TEXT_ROOT_NOTE5)
-        case 6:
-            RollType_value.set(TEXT_ROOT_NOTE6)
-        case 7:
-            RollType_value.set(TEXT_ROOT_NOTE7)
-        case 9:
-            RollType_value.set(TEXT_ROOT_NOTE9)
+        case 5: RollType_value.set(TEXT_ROOT_NOTE5)
+        case 6: RollType_value.set(TEXT_ROOT_NOTE6)
+        case 7: RollType_value.set(TEXT_ROOT_NOTE7)
+        case 9: RollType_value.set(TEXT_ROOT_NOTE9)
 
     LastingLocation = Rolls_info[int(RollsOption)][1]
     BeginLocationText = str(LastingLocation[0][0] + 1) + " / " + str(LastingLocation[0][1] + 1)
@@ -523,11 +530,15 @@ ProcessedYet_branch = False
 def Ask_FumenInner():
     global song_selected
     global BranchOptionList
+    global Fumen_Option_dict
+    global FumenOptionList
     global ChoosenBranchValue #test
-    global Fumen_Option_raw
     global FumenOption
-
-
+    
+    hbs, bms = Fumen_Option_dict[int(FumenOption)]['operation']
+    if(hbs or bms):
+        messagebox.showinfo('showinfo', TEXT_ROOT_MESSAGE_OPERATION_SUPPORT)
+        return
     if(not LoadedYet):
         messagebox.showinfo('showinfo', TEXT_ROOT_MESSAGE_NOTLOAD)
         return
@@ -572,8 +583,7 @@ def Ask_FumenInner():
     SaveFig_button.configure(state='disabled')
     zoom_button.configure(state="disabled")
 
-
-ChooseFumen_btn = tk.Button(root, text=TEXT_ROOT_FUMENGEN_UPPER , width=7, command=Ask_FumenInner, height=1, justify='center')          #不能寫成"Ask_FumenInner()"，這樣會自動執行Ask_FumenInner的函式
+ChooseFumen_btn = tk.Button(root, text=TEXT_ROOT_FUMENGEN_UPPER.upper() , width=7, command=Ask_FumenInner, height=1, justify='center')          #不能寫成"Ask_FumenInner()"，這樣會自動執行Ask_FumenInner的函式
 ChooseFumen_btn.place(relx=0.01, rely=0.1, anchor='w')
 
 #Step3 / 選擇分期狀態以後，
@@ -582,17 +592,14 @@ def Ask_FinalFumen():
     global SelectedYet
     global BranchOption
 
-
     if(not SelectedYet):
         messagebox.showinfo('showinfo', TEXT_ROOT_MESSAGE_NOTSELECTED_BRANCH)
         return
 
     FumenOption = FumenOptionList.get()
     BranchOption = BranchOptionList.get()
-    if(song_selected.IsBranchExist):
-        song_branched = TaikoFumenBranched(file_path, Codec, int(FumenOption), int(BranchOption[0]))
-    else:
-        song_branched = TaikoFumenBranched(file_path, Codec, int(FumenOption), None)
+    branch_sign = int(BranchOption[0]) if song_selected.IsBranchExist else None
+    song_branched = TaikoFumenBranched(file_path, Codec, int(FumenOption), branch_sign)
 
     #按鈕狀態設定/其他類似的初始話動作
     GenFig_button.configure(state='active')     #重新選擇不同譜面後，重置生成圖片的按鈕
@@ -604,7 +611,6 @@ def Ask_FinalFumen():
 
     SaveFig_button.configure(state='disabled')
     zoom_button.configure(state="disabled")
-    
 
     UpdateEveryResult()
     
@@ -683,6 +689,8 @@ def UpdateEveryResult():
                 Roll_KickState.append(str(balloon_kick[balloon_count]) + TEXT_ROOT_DRUMHITS)
                 balloon_count = balloon_count + 1
 
+    #for fumen in song_branched.FumanClassfication: print(fumen)
+
     #視速變化
     SeenVel_Changelevel = song_branched.SeenVelChangeFrequency(True, True, False)[0] - 1
     SeenVel_ChangeRate = song_branched.SeenVelChangeFrequency(True, True, True)[0]
@@ -705,10 +713,8 @@ def GenerateFumenFigure():
     global img_path
     global song_figure
 
-    if(song_selected.IsBranchExist):
-        song_figure = TaikoFumenRealiztion(file_path, Codec, int(FumenOption), int(BranchOption[0]), DEFAULT_DPI)
-    else:
-        song_figure = TaikoFumenRealiztion(file_path, Codec, int(FumenOption), None, DEFAULT_DPI)
+    branch_sign = int(BranchOption[0]) if song_selected.IsBranchExist else None
+    song_figure = TaikoFumenRealiztion(file_path, Codec, int(FumenOption), branch_sign, DEFAULT_DPI)
 
     song_figure.PlotAllNotes(True)
     plt.close('all')
@@ -747,18 +753,23 @@ ChooseBranch_btn.place(relx=0.01, rely=0.175, anchor='w')
 #顯示選擇譜面時的基本資訊
 COURSE_text = "-"
 COURSE_value = tk.StringVar()              
-COURSE_dis = tk.Entry(root, textvariable=COURSE_value, width=6, justify='center', state="readonly")
-COURSE_dis.place(relx=0.295, rely=0.1, anchor='center')
+COURSE_dis = tk.Entry(root, textvariable=COURSE_value, width=7, justify='center', state="readonly")
+COURSE_dis.place(relx=0.275, rely=0.1, anchor='center')
 
 DUAL_text = "-"
 DUAL_value = tk.StringVar()              
-DUAL_dis = tk.Entry(root, textvariable=DUAL_value, width=6, justify='center', state="readonly")
-DUAL_dis.place(relx=0.395, rely=0.1, anchor='center')
+DUAL_dis = tk.Entry(root, textvariable=DUAL_value, width=4, justify='center', state="readonly")
+DUAL_dis.place(relx=0.36, rely=0.1, anchor='center')
 
 LEVEL_text = "-"
 LEVEL_value = tk.StringVar()              
-LEVEL_dis = tk.Entry(root, textvariable=LEVEL_value, width=6, justify='center', state="readonly")
-LEVEL_dis.place(relx=0.495, rely=0.1, anchor='center')
+LEVEL_dis = tk.Entry(root, textvariable=LEVEL_value, width=4, justify='center', state="readonly")
+LEVEL_dis.place(relx=0.43, rely=0.1, anchor='center')
+
+SIDE_text = "-"
+SIDE_value = tk.StringVar()              
+SIDE_dis = tk.Entry(root, textvariable=SIDE_value, width=4, justify='center', state="readonly")
+SIDE_dis.place(relx=0.5, rely=0.1, anchor='center')
 
 #顯示音符組成
 Notes_composition = tk.Label(root, text=TEXT_ROOT_NOTESINFO_UPPER + '\n' + TEXT_ROOT_NOTESINFO_LOWER, relief='solid', borderwidth=0.5)

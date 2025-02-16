@@ -2,6 +2,8 @@ import math
 import os
 import matplotlib.pyplot as plt
 import configparser
+import sys
+sys.setrecursionlimit(3000)
 
 def WriteConfig(configpath,SECTION,KEY,value):  #https://stackoverflow.com/questions/8884188/how-to-read-and-write-ini-file-with-python3
     config = configparser.ConfigParser()
@@ -14,7 +16,6 @@ def ReadConfig(configpath,SECTION,KEY):
     config = configparser.ConfigParser()
     config.read(configpath, encoding="utf-8")
     return config[SECTION][KEY]
-
 
 class TaikoFumen():
     def __init__(self, Path, codec):
@@ -47,7 +48,6 @@ class TaikoFumen():
 
         def IsPhraseShowUpBeforeComma(phrase, rowindex):
           while("," not in EveryRow[rowindex]):
-            #print(EveryRow[rowindex], phrase in EveryRow[rowindex])
             if(phrase in EveryRow[rowindex]): return True
             rowindex = rowindex + 1
           return False
@@ -91,7 +91,6 @@ class TaikoFumen():
             Command_BARLINE_storage = ""
             Command_GOGO_storage = ""
             BranchEncounter = False
-
 
         EveryRow = new_EveryRow
         self.EveryRow = EveryRow
@@ -163,8 +162,8 @@ class TaikoFumen():
                 
             #20240622 更新:
             match directness.lower():
-                case "1"|"normal": side = "EXT"
-                case "2"|"ex": side = "INT"
+                case "1"|"normal": side = "○"
+                case "2"|"ex": side = "●"
                 case "3": side = "-"
                 case "": side = _last_record_side
                 case _: raise Exception(f"Not a available side symbol, expect 1/2/3/None, (Input: \"{directness}\")")
@@ -179,14 +178,14 @@ class TaikoFumen():
             if style=="" and still_in_same_course: style = _last_record_style
             _last_record_style = style
 
-            style_declaration = style.lower()=="double" or style=="2"
-            extracted_dual_sign = dual=="P1" or dual=="P2"
-            if (not style_declaration) and extracted_dual_sign : 
-               raise Exception("Find that \"#START P1/2\" is written in file, but \"STYLE:\" section doesn't declare it's as a fumen for double player.")
-            if style_declaration and (not extracted_dual_sign) :
-               raise Exception("Find that double player mode is mentioned in \"STYLE:\" section, but \"#START P1/2\" is not written.")
+            # style_declaration = style.lower()=="double" or style=="2"
+            # extracted_dual_sign = dual=="P1" or dual=="P2"
+            # if (not style_declaration) and extracted_dual_sign : 
+            #    raise Exception("Find that \"#START P1/2\" is written in file, but \"STYLE:\" section doesn't declare it's as a fumen for double player.")
+            # if style_declaration and (not extracted_dual_sign) :
+            #    raise Exception("Find that double player mode is mentioned in \"STYLE:\" section, but \"#START P1/2\" is not written.")
             
-            self.FumanClassfication.append([i, difficulty, dual, side, level])
+            self.FumanClassfication.append([i, difficulty, dual, level, side])
 
             #20240622 更新:
             fumen_dict = {'difficulty':difficulty, 'dual':dual, 'side':side, 'level':level, 'operation':(HBSCROLL, BMSCROLL)}
@@ -291,10 +290,10 @@ class TaikoFumenInner(TaikoFumen):
 
         for i in range(ChosenBegin+1,ChosenEndin):
 
-            #檢查該小節是否有註解用的"//"符號，並記錄位置
+            #檢查該行是否有註解用的"//"符號，並記錄位置
             Annotation = self.EveryRow[i].find("//")
 
-            #檢查該小節是否有譜面功能用的"#"符號，並記錄位置
+            #檢查該行是否有譜面功能用的"#"符號，並記錄位置
             if(Annotation==-1):
                 FunctionUsage = self.EveryRow[i].find("#")
             else:
@@ -684,7 +683,7 @@ class TaikoFumenBranched(TaikoFumenInner):
             OG_BarlineSet = self.BarlineSet
             OG_GOGOSet = self.GOGOSet
 
-            HasBrachProcessYet = True
+            self.HasBrachProcessYet = True
 
         EveryBarRowLocation = []
         EveryBar = []
@@ -892,7 +891,6 @@ class TaikoFumenBranched(TaikoFumenInner):
          BeatsToMeasureSet = self.BeatsToMeasureSet
          BPMValueSet = self.BPMValueSet
 
-
          if(y==None):
             y=[len(EveryBar)-1, len(EveryBar[-1])-1]
          OverallDuration = 0
@@ -947,6 +945,7 @@ class TaikoFumenBranched(TaikoFumenInner):
 
          return OverallDuration * ProcessDirectionElement, DELAYinProcess * ProcessDirectionElement
     
+    #20250216 更新
     #找出所有相鄰鼓點間，持續時間最短和最長的值
     def FindExtremePeriod(self):
         Noteslist = self.FindEveryActualNotesLocation()
@@ -1013,10 +1012,6 @@ class TaikoFumenBranched(TaikoFumenInner):
 
         return (self.Get_NumberOfNotes_InRegion(Lowerbound,Upperbound)[0]+1) / t
     
-    #計算時間，並顯示固定的位數
-    import math
-    import sys
-    sys.setrecursionlimit(3000)
     def chechforms(self, x):
       if(x>=10):
         x = str(x)
@@ -1039,7 +1034,6 @@ class TaikoFumenBranched(TaikoFumenInner):
 
       ProcessUnitTime = []
       ProcessTime = 0
-      import time
       for i in range(len(Noteslist)):
           start = time.time()
           Compared = self.DensityInSpreadRange(Noteslist[i],T)
@@ -1067,8 +1061,6 @@ class TaikoFumenBranched(TaikoFumenInner):
     def DensityInSepecificTimeRegionBoth(self, T):
       AllRelativeLocation = self.FindEveryActualNotesLocation()
       Noteslist = self.FindEveryActualNotesLocation()
-      ALLnotes = len(AllRelativeLocation)
-
 
       Temp = self.DensityInSpreadRange(AllRelativeLocation[0],T)
       TempL = Temp
@@ -1123,14 +1115,11 @@ class TaikoFumenBranched(TaikoFumenInner):
           j = 0
           while(RelativeTime[i+j]-RelativeTime[i]<t):
             j = j + 1
-          #HighEnd = j - 1
 
           k = 0
           while(RelativeTime[i]-RelativeTime[i-k]<t):
             k = k + 1
-          #LowEnd = k - 1
 
-          #NumberOfNotesInsidePeriod = HighEnd + LowEnd + 1
           NumberOfNotesInsidePeriod = j + k - 1
 
           CurrentDensity = NumberOfNotesInsidePeriod / T
@@ -1155,8 +1144,6 @@ class TaikoFumenBranched(TaikoFumenInner):
       LatestHigh = 0
       PrintThresHold = 0
 
-      import math
-      import time
       ScanningLocation = -ScanRate/math.exp(1)
       while(ScanningLocation < RelativeTime[-1]):
         i = 0
@@ -1179,16 +1166,12 @@ class TaikoFumenBranched(TaikoFumenInner):
           LatestLow = CurrentDensity
         ScanningLocation = ScanningLocation + ScanRate
 
-        if(ScanningLocation + T > RelativeTime[-1]):
-          break
-
+        if(ScanningLocation + T > RelativeTime[-1]): break
 
         if(ScanningLocation>PrintThresHold):
           print(f"\rLatest\t:{round(LatestHigh,3)}\t/{round(LatestLow,3)}\tnotes/s\t/  Location:\t{self.TimeDisplay(ScanningLocation)}|{self.TimeDisplay(RelativeTime[-1])}",end='')
           PrintThresHold = PrintThresHold + 1
       print("\n")
-      # time.sleep(1.5)
-      # print(f"\r                                                                                                ")
 
       return LatestHigh, LatestLow
     
@@ -1457,33 +1440,32 @@ class TaikoFumenBranched(TaikoFumenInner):
       return ComplexesLocation
     
     def DefineDiffucultyOfComplex(self, random_complex):
-      ppp = random_complex
-      aaa = ""
-      for _ in ppp:
-        if(_ == "1" or _ == "3"):
-          aaa = aaa + "d"
-        elif(_ == "2" or _ == "4"):
-          aaa = aaa + "k"
+      text_tramsfer = ""
+      for note in random_complex:
+        if(note == "1" or note == "3"):
+          text_tramsfer = text_tramsfer + "d"
+        elif(note == "2" or note == "4"):
+          text_tramsfer = text_tramsfer + "k"
 
       sign_change = 0
       hand_change = 0
-      if(len(aaa)!=0):
-        temp = aaa[0]
+      if(len(text_tramsfer)!=0):
+        temp = text_tramsfer[0]
         sign_change = 0
         temp_str = ""
         new_str = []
 
-        for _ in aaa:
-          if(temp!=_):
-            temp = _
+        for note in text_tramsfer:
+          if(temp!=note):
+            temp = note
             sign_change = sign_change + 1
 
           if(len(temp_str)<2):
-            temp_str = temp_str + _
+            temp_str = temp_str + note
           else:
             new_str.append(temp_str)
             temp_str = ""
-            temp_str = temp_str + _
+            temp_str = temp_str + note
 
         new_str.append(temp_str)
 
@@ -1507,10 +1489,10 @@ class TaikoFumenBranched(TaikoFumenInner):
 
       Original = FullSeriesNotes
       Transformed = ""
-      for _ in Original:
-        if(_ == "1" or _ == "3"):
+      for note in Original:
+        if(note == "1" or note == "3"):
           Transformed = Transformed + "d"
-        elif(_ == "2" or _ == "4"):
+        elif(note == "2" or note == "4"):
           Transformed = Transformed + "k"
 
       sign_change = 0
@@ -1522,17 +1504,17 @@ class TaikoFumenBranched(TaikoFumenInner):
         temp_str = ""
         new_str = []
 
-        for _ in Transformed:
-          if(temp!=_):
-            temp = _
+        for note in Transformed:
+          if(temp!=note):
+            temp = note
             sign_change = sign_change + 1
 
           if(len(temp_str)<2):
-            temp_str = temp_str + _
+            temp_str = temp_str + note
           else:
             new_str.append(temp_str)
             temp_str = ""
-            temp_str = temp_str + _
+            temp_str = temp_str + note
 
         new_str.append(temp_str)
 
@@ -1607,7 +1589,8 @@ class TaikoFumenRealiztion(TaikoFumenBranched):
             return True
       return False
     
-    def PlotNotes_2(self, InputAboutBar, InputAboutMeasure, iteInRoll=None, iteRollsize=None, iteSelected_color=None, go=None, bpm=None, scr=None, balloon_count=None, PlotAct=True):
+    def PlotNotes_2(self, InputAboutBar, InputAboutMeasure, iteInRoll=None, iteRollsize=None \
+                    , iteSelected_color=None, go=None, bpm=None, scr=None, balloon_count=None, PlotAct=True):
       if(balloon_count==None):
          balloon_count = 0
 
@@ -1696,7 +1679,6 @@ class TaikoFumenRealiztion(TaikoFumenBranched):
             match target_notes:
               case "0" | "5" | "6" | "7" | "9":
                 SafeDrawSize = (len(SomeBar)-1) / 16         #有連打的情況下，繼續用正方形可能會導致無法畫出圓形的頭尾
-                #Selected_color = Rollcolor = Selected_color
                 Selected_color = Selected_color
                 if(i < SafeDrawSize * Rollsize / 20  or i > len(SomeBar) - 1 - SafeDrawSize * Rollsize / 20):
                   Selected_marker = "o"
@@ -1742,14 +1724,18 @@ class TaikoFumenRealiztion(TaikoFumenBranched):
                 existing = 1
                 InRoll = False
             if(not InRoll):
-              plt.plot(i/(len(SomeBar)-1), 0, color=Selected_color, marker=Selected_marker, markersize=size, mew=2.5, mec=SelectedEdgeColor, alpha=existing, zorder=len(SomeBar)-i)
+              plt.plot(i/(len(SomeBar)-1), 0, color=Selected_color, marker=Selected_marker, \
+                       markersize=size, mew=2.5, mec=SelectedEdgeColor, alpha=existing, zorder=len(SomeBar)-i)
             else:
               if(i!=0 and i!=len(SomeBar)-1):
-                ax.add_patch(plt.Rectangle((i/(len(SomeBar)-1), -size*SignSizeToAxisValueRatio-StartPosistionOffset), 1/(len(SomeBar)-1), (size-0)*SignSizeToAxisValueRatio*2, facecolor=Selected_color, alpha=1, zorder=len(SomeBar)-i))
+                ax.add_patch(plt.Rectangle((i/(len(SomeBar)-1), -size*SignSizeToAxisValueRatio-StartPosistionOffset), \
+                                           1/(len(SomeBar)-1), (size-0)*SignSizeToAxisValueRatio*2, facecolor=Selected_color, alpha=1, zorder=len(SomeBar)-i))
               else:
                 if(i==0):
-                  ax.add_patch(plt.Rectangle((i/(len(SomeBar)-1), -size*SignSizeToAxisValueRatio-StartPosistionOffset), 1/(len(SomeBar)-1), (size-0)*SignSizeToAxisValueRatio*2, facecolor=Selected_color, alpha=1, zorder=len(SomeBar)-i))
-                plt.plot(i/(len(SomeBar)-1), 0, color=Selected_color, marker=Selected_marker, markersize=size, mew=2.5, mec=Selected_color, alpha=existing, zorder=len(SomeBar)-i)
+                  ax.add_patch(plt.Rectangle((i/(len(SomeBar)-1), -size*SignSizeToAxisValueRatio-StartPosistionOffset), \
+                                             1/(len(SomeBar)-1), (size-0)*SignSizeToAxisValueRatio*2, facecolor=Selected_color, alpha=1, zorder=len(SomeBar)-i))
+                plt.plot(i/(len(SomeBar)-1), 0, color=Selected_color, marker=Selected_marker, \
+                         markersize=size, mew=2.5, mec=Selected_color, alpha=existing, zorder=len(SomeBar)-i)
           else:
             match target_notes:
               case "1":
@@ -1820,13 +1806,15 @@ class TaikoFumenRealiztion(TaikoFumenBranched):
                 existing = 0
 
             if(InRoll):
-              ax.add_patch(plt.Rectangle((i/(len(SomeBar)-1), -size*SignSizeToAxisValueRatio-StartPosistionOffset), 1/(len(SomeBar)-1), (size-0)*SignSizeToAxisValueRatio*2, facecolor=Selected_color, alpha=1, zorder=len(SomeBar)-i))
+              ax.add_patch(plt.Rectangle((i/(len(SomeBar)-1), -size*SignSizeToAxisValueRatio-StartPosistionOffset), \
+                                         1/(len(SomeBar)-1), (size-0)*SignSizeToAxisValueRatio*2, facecolor=Selected_color, alpha=1, zorder=len(SomeBar)-i))
               if(NeedKick):
-                ax.text(i/(len(SomeBar)-1), 0, str(BalloonKick[balloon]), horizontalalignment='center', verticalalignment='center', weight="bold", fontsize=balloonfontsize, zorder=len(SomeBar)+1, color='black', alpha=1)
+                ax.text(i/(len(SomeBar)-1), 0, str(BalloonKick[balloon]), horizontalalignment='center', \
+                        verticalalignment='center', weight="bold", fontsize=balloonfontsize, zorder=len(SomeBar)+1, color='black', alpha=1)
                 balloon = balloon + 1
 
-            plt.plot(i/(len(SomeBar)-1), 0, color=Selected_color, marker=Selected_marker, markersize=size, mew=2.5, mec=SelectedEdgeColor, alpha=existing, zorder=len(SomeBar)-i)
-
+            plt.plot(i/(len(SomeBar)-1), 0, color=Selected_color, marker=Selected_marker \
+                     , markersize=size, mew=2.5, mec=SelectedEdgeColor, alpha=existing, zorder=len(SomeBar)-i)
 
         else:
           plt.plot(0, 0, color="black", marker="o", markersize=25, mew=2.5, mec="grey", alpha=0, zorder=0)
@@ -1842,12 +1830,14 @@ class TaikoFumenRealiztion(TaikoFumenBranched):
             seg = 1/(len(EveryBar[InputAboutBar])-1)
             if(Current_bpm!=bpm_state[j]):
               Current_bpm = bpm_state[j]
-              ax.text(pos, Display_axis_bpm, " " + str(round(Current_bpm, value_decimaldigits)), fontsize=Display_fontsize, zorder=len(SomeBar)+1 , color='red', alpha=1, verticalalignment='top')
+              ax.text(pos, Display_axis_bpm, " " + str(round(Current_bpm, value_decimaldigits)) \
+                      , fontsize=Display_fontsize, zorder=len(SomeBar)+1 , color='red', alpha=1, verticalalignment='top')
               ax.axvline(pos, color='red', linestyle='-', alpha=0.3, zorder=0)
             #原先有考慮到複素數譜面，但基本沒有，所以以絕對值為值
             if(Current_scr!=scr_state[j]):
               Current_scr = scr_state[j]
-              ax.text(pos, Display_axis_scr, " " + str(round(abs(Current_scr), value_decimaldigits)), fontsize=Display_fontsize, zorder=len(SomeBar)+1, color='blue', alpha=1, verticalalignment='bottom')
+              ax.text(pos, Display_axis_scr, " " + str(round(abs(Current_scr), value_decimaldigits)) \
+                      , fontsize=Display_fontsize, zorder=len(SomeBar)+1, color='blue', alpha=1, verticalalignment='bottom')
               ax.axvline(pos, color='blue', linestyle='-', alpha=0.3, zorder=0)
             #燃燒段
             if(go_state[j]):
@@ -1882,12 +1872,14 @@ class TaikoFumenRealiztion(TaikoFumenBranched):
         else:
           if(Current_bpm!=bpm_state[0]):
             Current_bpm = bpm_state[0]
-            ax.text(0, Display_axis_bpm, " " + str(round(Current_bpm, value_decimaldigits)), fontsize=Display_fontsize, zorder=len(SomeBar)+1 , color='red', alpha=1, verticalalignment='top') 
+            ax.text(0, Display_axis_bpm, " " + str(round(Current_bpm, value_decimaldigits)) \
+                    , fontsize=Display_fontsize, zorder=len(SomeBar)+1 , color='red', alpha=1, verticalalignment='top') 
             ax.axvline(0, color='red', linestyle='-', alpha=0.3, zorder=0)
           #原先有考慮到複素數譜面，但基本沒有，所以先以絕對值為值
           if(Current_scr!=scr_state[0]):
             Current_scr = scr_state[0]
-            ax.text(0, Display_axis_scr, " " + str(round(abs(Current_scr), value_decimaldigits)), fontsize=Display_fontsize, zorder=len(SomeBar)+1, color='blue', alpha=1, verticalalignment='bottom')
+            ax.text(0, Display_axis_scr, " " + str(round(abs(Current_scr), value_decimaldigits)) \
+                    , fontsize=Display_fontsize, zorder=len(SomeBar)+1, color='blue', alpha=1, verticalalignment='bottom')
             ax.axvline(0, color='blue', linestyle='-', alpha=0.3, zorder=0)
           #燃燒段
           if(go_state[0]):
@@ -1959,7 +1951,8 @@ class TaikoFumenRealiztion(TaikoFumenBranched):
 
       else:
         for x in range(len(self.EveryBar)):
-          PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon = self.PlotNotes_2(x, self.BeatsToMeasureSet[x][0], PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon)
+          PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon = \
+            self.PlotNotes_2(x, self.BeatsToMeasureSet[x][0], PassRoll, PassRollSize, PassNoteColor, go, bpm, scr, balloon)
 
     def PlotSingleNotes(self, InputAboutBar, InputAboutMeasure, iteInRoll=None, iteRollsize=None, iteSelected_color=None, go=None, bpm=None, scr=None, balloon_count=None):
       if(os.path.isdir("_tempfig")):
